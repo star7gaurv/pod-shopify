@@ -3,7 +3,15 @@
 import { useState } from "react";
 import { useSearchParams } from "next/navigation";
 
-const PLANS = [
+type Plan = {
+  key: string;
+  name: string;
+  price: string;
+  features: string[];
+  highlight?: boolean;
+};
+
+const PLANS: Plan[] = [
   {
     key: "starter",
     name: "Starter",
@@ -29,7 +37,7 @@ const PLANS = [
     ],
     highlight: true,
   },
-] as const;
+];
 
 export default function SubscribePage() {
   const searchParams = useSearchParams();
@@ -102,7 +110,7 @@ export default function SubscribePage() {
         )}
 
         <div className="grid md:grid-cols-2 gap-6">
-          {PLANS.map((plan) => (
+          {PLANS.map((plan: Plan) => (
             <div
               key={plan.key}
               className={`rounded-2xl p-8 border ${

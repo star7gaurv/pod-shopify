@@ -13,7 +13,16 @@ type SubInfo = {
   } | null;
 };
 
-const PLANS = [
+type Plan = {
+  key: string;
+  name: string;
+  price: string;
+  priceNum: number;
+  features: readonly string[];
+  highlight?: boolean;
+};
+
+const PLANS: Plan[] = [
   {
     key: "starter",
     name: "Starter",
@@ -42,7 +51,7 @@ const PLANS = [
     ],
     highlight: true,
   },
-] as const;
+];
 
 export default function MerchantSubscription() {
   const searchParams = useSearchParams();
