@@ -54,15 +54,19 @@ export default function SubscribePage() {
         throw new Error(data.error ?? "Failed to create subscription");
       }
 
-      const Razorpay = (await import("razorpay")).default;
       // Load Razorpay checkout script
-      const rzScript = document.createElement("script");
-      rzScript.src = "https://checkout.razorpay.com/v1/checkout.js";
-      document.head.appendChild(rzScript);
-      await new Promise((resolve) => { rzScript.onload = resolve; });
+      if (!document.querySelector('script[src*="checkout.razorpay.com"]')) {
+        await new Promise<void>((resolve, reject) => {
+          const s = document.createElement("script");
+          s.src = "https://checkout.razorpay.com/v1/checkout.js";
+          s.onload = () => resolve();
+          s.onerror = reject;
+          document.head.appendChild(s);
+        });
+      }
 
-      // @ts-expect-error Razorpay loaded via script
-      const rzCheckout = new window.Razorpay({
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const rzCheckout = new (window as any).Razorpay({
         key: data.razorpayKey,
         subscription_id: data.subscriptionId,
         name: "Print Studio",
