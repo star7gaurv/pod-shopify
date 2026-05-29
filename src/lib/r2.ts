@@ -47,25 +47,37 @@ function normalizePublicBaseUrl(url: string) {
   return url.replace(/\/+$/, "");
 }
 
-const s3Client = new S3Client({
-  region: getRequiredEnv("AWS_REGION"),
-  credentials: {
-    accessKeyId: getRequiredEnv("AWS_ACCESS_KEY_ID"),
-    secretAccessKey: getRequiredEnv("AWS_SECRET_ACCESS_KEY"),
-  },
-});
+// Lazily create the S3 client so the app builds without AWS env vars configured
+let _s3Client: S3Client | null = null;
+function getS3Client(): S3Client {
+  if (!_s3Client) {
+    _s3Client = new S3Client({
+      region: getRequiredEnv("AWS_REGION"),
+      credentials: {
+        accessKeyId: getRequiredEnv("AWS_ACCESS_KEY_ID"),
+        secretAccessKey: getRequiredEnv("AWS_SECRET_ACCESS_KEY"),
+      },
+    });
+  }
+  return _s3Client;
+}
 
-const S3_PUBLIC_BASE = `https://${process.env.AWS_S3_BUCKET}.s3.${process.env.AWS_REGION}.amazonaws.com`;
+function getS3PublicBase(): string {
+  const bucket = process.env.AWS_S3_BUCKET ?? "";
+  const region = process.env.AWS_REGION ?? "";
+  return `https://${bucket}.s3.${region}.amazonaws.com`;
+}
 
 export function getPublicUrl(key: string) {
-  return `${S3_PUBLIC_BASE}/${normalizeKey(key)}`;
+  return `${getS3PublicBase()}/${normalizeKey(key)}`;
 }
 
 export function extractR2KeyFromPublicUrl(url: string) {
-  if (!url.startsWith(`${S3_PUBLIC_BASE}/`)) {
+  const base = getS3PublicBase();
+  if (!url.startsWith(`${base}/`)) {
     return null;
   }
-  return normalizeKey(url.slice(S3_PUBLIC_BASE.length + 1));
+  return normalizeKey(url.slice(base.length + 1));
 }
 
 export async function uploadFile({
@@ -81,7 +93,7 @@ export async function uploadFile({
       ? Buffer.from(body, isBase64 ? "base64" : "utf8")
       : body;
 
-  await s3Client.send(
+  await getS3Client().send(
     new PutObjectCommand({
       Bucket: getRequiredEnv("AWS_S3_BUCKET"),
       Key: normalizedKey,
@@ -97,7 +109,7 @@ export async function uploadFile({
 export async function deleteFile(key: string) {
   const normalizedKey = normalizeKey(key);
 
-  await s3Client.send(
+  await getS3Client().send(
     new DeleteObjectCommand({
       Bucket: getRequiredEnv("AWS_S3_BUCKET"),
       Key: normalizedKey,
@@ -109,7 +121,7 @@ export async function copyFile(sourceKey: string, destinationKey: string) {
   const normalizedSourceKey = normalizeKey(sourceKey);
   const normalizedDestinationKey = normalizeKey(destinationKey);
 
-  await s3Client.send(
+  await getS3Client().send(
     new CopyObjectCommand({
       Bucket: getRequiredEnv("AWS_S3_BUCKET"),
       CopySource: `${getRequiredEnv("AWS_S3_BUCKET")}/${normalizedSourceKey}`,
@@ -132,7 +144,7 @@ export async function listFilesByPrefix(prefix: string) {
   let continuationToken: string | undefined;
 
   do {
-    const response = await s3Client.send(
+    const response = await getS3Client().send(
       new ListObjectsV2Command({
         Bucket: getRequiredEnv("AWS_S3_BUCKET"),
         Prefix: normalizedPrefix,
@@ -162,7 +174,7 @@ export async function listFilesByPrefix(prefix: string) {
 
 export async function getFile(key: string): Promise<RetrievedR2File | null> {
   const normalizedKey = normalizeKey(key);
-  const response = await s3Client.send(
+  const response = await getS3Client().send(
     new GetObjectCommand({
       Bucket: getRequiredEnv("AWS_S3_BUCKET"),
       Key: normalizedKey,
