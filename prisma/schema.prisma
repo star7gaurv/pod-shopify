@@ -1,0 +1,253 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Shopify Multi-Tenant ────────────────────────────────────────────────────
+
+model Shop {
+  id          String  @id @default(cuid())
+  shopDomain  String  @unique
+  accessToken String  @db.Text
+  plan        String  @default("free") // free | starter | pro
+  isActive    Boolean @default(true)
+  installedAt DateTime @default(now())
+
+  designs      Design[]
+  orders       Order[]
+  subscription Subscription?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([shopDomain])
+}
+
+model Subscription {
+  id               String    @id @default(cuid())
+  shopId           String    @unique
+  razorpayPlanId   String
+  razorpaySubId    String?
+  razorpayCustomerId String?
+  status           String    @default("created") // created | active | halted | cancelled
+  currentPeriodEnd DateTime?
+  trialEndsAt      DateTime?
+
+  shop Shop @relation(fields: [shopId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ─── Core Studio Models ──────────────────────────────────────────────────────
+
+model Product {
+  id       String  @id @default(cuid())
+  name     String
+  slug     String  @unique
+  isActive Boolean @default(true)
+
+  templates    Template[]
+  designs      Design[]
+  orders       Order[]
+  catalogItems CatalogItem[] @relation("CatalogItemStudioProduct")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  password  String
+  name      String?
+  role      String   @default("SUPER_ADMIN")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Template {
+  id        String @id @default(cuid())
+  productId String
+  name      String
+  slug      String @unique
+
+  basePrice Decimal @db.Decimal(10, 2)
+  baseColor String  @default("#ffffff")
+
+  modelPath    String
+  uvLayoutPath String
+
+  isActive Boolean @default(true)
+
+  product      Product             @relation(fields: [productId], references: [id], onDelete: Cascade)
+  materials    TemplateMaterial[]
+  sizeCharts   TemplateSizeChart[]
+  designs      Design[]
+  orders       Order[]
+  catalogItems CatalogItem[]       @relation("CatalogItemStudioTemplate")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model CatalogItem {
+  id               String   @id @default(cuid())
+  title            String
+  slug             String   @unique
+  shortDescription String
+  description      String?  @db.Text
+  imagePath        String?
+  ogImagePath      String?
+  studioProductId  String?
+  studioTemplateId String?
+  isActive         Boolean  @default(true)
+  isFeatured       Boolean  @default(false)
+  sortOrder        Int      @default(0)
+  metaTitle        String?
+  metaDescription  String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  studioProduct  Product?  @relation("CatalogItemStudioProduct", fields: [studioProductId], references: [id], onDelete: SetNull)
+  studioTemplate Template? @relation("CatalogItemStudioTemplate", fields: [studioTemplateId], references: [id], onDelete: SetNull)
+
+  @@index([isActive])
+  @@index([isFeatured])
+  @@index([sortOrder])
+  @@index([studioProductId])
+  @@index([studioTemplateId])
+}
+
+model TemplateMaterial {
+  id         String  @id @default(cuid())
+  templateId String
+  name       String
+  price      Decimal @db.Decimal(10, 2)
+  isDefault  Boolean @default(false)
+  isActive   Boolean @default(true)
+
+  template Template @relation(fields: [templateId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model TemplateSizeChart {
+  id          String @id @default(cuid())
+  templateId  String
+  name        String
+  description String @db.Text
+  sortOrder   Int    @default(0)
+
+  template Template @relation(fields: [templateId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Design {
+  id         String @id @default(cuid())
+  shareToken String @unique
+
+  shopId     String? // null = standalone (admin-created), set = merchant-created
+  productId  String
+  templateId String
+  materialId String?
+  parentDesignId String?
+
+  baseColor  String
+  canvasJson Json
+  designMeta Json?
+  isFeatured Boolean @default(false)
+  isLocked   Boolean @default(false)
+
+  previewImagePath String?
+  exportFolderPath String?
+
+  expiresAt    DateTime?
+  lastOpenedAt DateTime?
+
+  shop         Shop?         @relation(fields: [shopId], references: [id], onDelete: SetNull)
+  product      Product       @relation(fields: [productId], references: [id])
+  template     Template      @relation(fields: [templateId], references: [id])
+  parentDesign Design?       @relation("DesignParentChildren", fields: [parentDesignId], references: [id])
+  childDesigns Design[]      @relation("DesignParentChildren")
+  assets       DesignAsset[]
+  orders       Order[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([shopId])
+  @@index([shareToken])
+}
+
+model DesignAsset {
+  id       String  @id @default(cuid())
+  designId String
+  fileName String
+  filePath String
+  mimeType String?
+  fileSize Int?
+
+  design Design @relation(fields: [designId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+}
+
+model Order {
+  id          String @id @default(cuid())
+  orderNumber String @unique
+
+  shopId     String? // null = standalone order
+  designId   String
+  productId  String
+  templateId String
+  materialId String?
+
+  // Shopify-specific fields
+  shopifyOrderId     String?
+  shopifyOrderNumber String?
+  fulfillmentStatus  String  @default("pending") // pending | sent_to_printer | fulfilled | failed
+
+  customerName  String
+  customerPhone String
+  customerEmail String?
+  instructions  String? @db.Text
+
+  quantity     Int     @default(1)
+  pricePerItem Decimal @db.Decimal(10, 2)
+  totalPrice   Decimal @db.Decimal(10, 2)
+
+  status String @default("pending") // pending | processing | completed | cancelled
+
+  shop     Shop?       @relation(fields: [shopId], references: [id], onDelete: SetNull)
+  design   Design      @relation(fields: [designId], references: [id])
+  product  Product     @relation(fields: [productId], references: [id])
+  template Template    @relation(fields: [templateId], references: [id])
+  files    OrderFile[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([shopId])
+  @@index([shopifyOrderId])
+}
+
+model OrderFile {
+  id       String  @id @default(cuid())
+  orderId  String
+  fileName String
+  filePath String
+  mimeType String?
+  fileSize Int?
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+}

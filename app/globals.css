@@ -1,0 +1,91 @@
+@import "tailwindcss";
+
+:root {
+  --background: #02070d;
+  --background-soft: #09111b;
+  --foreground: #f3f4f6;
+  --muted: #95a3b8;
+  --line: rgba(255, 255, 255, 0.08);
+  --panel-top: rgba(8, 17, 28, 0.98);
+  --panel-bottom: rgba(4, 10, 17, 0.96);
+  --brand-accent: #ca0250;
+  --brand-accent-hover: color-mix(in srgb, var(--brand-accent) 84%, black);
+  --brand-accent-soft-solid: color-mix(in srgb, var(--brand-accent) 78%, white);
+  --brand-accent-soft: color-mix(in srgb, var(--brand-accent) 18%, transparent);
+  --brand-accent-glow: color-mix(in srgb, var(--brand-accent) 35%, transparent);
+  --brand-accent-border: color-mix(in srgb, var(--brand-accent) 45%, transparent);
+  --brand-accent-shadow: color-mix(in srgb, var(--brand-accent) 24%, transparent);
+  --brand-accent-icon-shadow: color-mix(in srgb, var(--brand-accent) 14%, transparent);
+  --brand-accent-surface: color-mix(in srgb, var(--brand-accent) 16%, transparent);
+  --brand-accent-surface-strong: color-mix(in srgb, var(--brand-accent) 24%, transparent);
+  --brand-accent-surface-faint: color-mix(in srgb, var(--brand-accent) 8%, transparent);
+  --brand-accent-highlight: color-mix(in srgb, var(--brand-accent) 70%, transparent);
+  --accent: var(--brand-accent);
+  --accent-soft: var(--brand-accent-soft-solid);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+html {
+  scroll-padding-top: 96px;
+}
+
+body {
+  background:
+    radial-gradient(circle at top center, rgba(24, 60, 95, 0.18), transparent 24%),
+    linear-gradient(180deg, #02070d 0%, #01050a 100%);
+}
+
+* {
+  border-color: var(--line);
+}
+
+::selection {
+  background: color-mix(in srgb, var(--brand-accent) 30%, transparent);
+  color: white;
+}
+
+@keyframes brand-logo-beat {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 0.94;
+  }
+  35% {
+    transform: scale(1.07);
+    opacity: 1;
+  }
+  60% {
+    transform: scale(1.02);
+    opacity: 0.98;
+  }
+}
+
+@keyframes brand-loader-glow {
+  0%,
+  100% {
+    box-shadow:
+      0 0 0 0 color-mix(in srgb, var(--brand-accent) 0%, transparent),
+      0 0 28px color-mix(in srgb, var(--brand-accent) 10%, transparent);
+  }
+  35% {
+    box-shadow:
+      0 0 0 10px color-mix(in srgb, var(--brand-accent) 0%, transparent),
+      0 0 42px var(--brand-accent-glow);
+  }
+}
+
+.brand-logo-beat {
+  animation: brand-logo-beat 1.45s ease-in-out infinite;
+  transform-origin: center;
+  will-change: transform, opacity;
+}
+
+.brand-loader-glow {
+  animation: brand-loader-glow 1.45s ease-in-out infinite;
+}

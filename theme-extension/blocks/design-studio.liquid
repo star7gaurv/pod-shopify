@@ -1,0 +1,161 @@
+{% comment %}
+  Print Studio Design Tool — Theme App Extension Block
+  Renders a "Customize This Product" button on product pages.
+  When clicked, opens the 3D design studio in a full-screen modal.
+
+  The studio saves the design and stores its ID as a cart line item
+  property (_pod_design_id) which is captured by our orders/create webhook.
+{% endcomment %}
+
+{% assign studio_base_url = 'https://pod.star7gaurav.in' %}
+{% assign product_slug = product.metafields.pod.product_slug | default: product.handle %}
+{% assign template_slug = product.metafields.pod.template_slug %}
+
+{% if template_slug != blank %}
+<div
+  id="pod-design-studio-wrapper"
+  data-pod-product="{{ product_slug }}"
+  data-pod-template="{{ template_slug }}"
+  data-pod-studio-url="{{ studio_base_url }}"
+  style="margin: 16px 0;"
+>
+  <button
+    id="pod-open-studio-btn"
+    type="button"
+    style="
+      width: 100%;
+      padding: 14px 24px;
+      background: linear-gradient(135deg, #EE0979 0%, #FF6B6B 100%);
+      color: #fff;
+      font-size: 16px;
+      font-weight: 600;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      letter-spacing: 0.02em;
+      transition: opacity 0.2s;
+    "
+    onmouseover="this.style.opacity='0.9'"
+    onmouseout="this.style.opacity='1'"
+  >
+    🎨 Customize This Product
+  </button>
+
+  <div id="pod-design-id-holder" style="display:none;"></div>
+</div>
+
+<!-- Studio Modal -->
+<div
+  id="pod-studio-modal"
+  style="
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 999999;
+    background: rgba(0,0,0,0.95);
+  "
+>
+  <div style="position:relative; width:100%; height:100%;">
+    <button
+      id="pod-close-studio-btn"
+      type="button"
+      style="
+        position: absolute;
+        top: 16px;
+        right: 16px;
+        z-index: 1;
+        background: rgba(255,255,255,0.15);
+        border: none;
+        color: #fff;
+        font-size: 20px;
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        cursor: pointer;
+        line-height: 40px;
+        text-align: center;
+      "
+      aria-label="Close design studio"
+    >✕</button>
+    <iframe
+      id="pod-studio-iframe"
+      src="about:blank"
+      style="width:100%; height:100%; border:none;"
+      allow="clipboard-write"
+    ></iframe>
+  </div>
+</div>
+
+<script>
+(function() {
+  var wrapper = document.getElementById('pod-design-studio-wrapper');
+  if (!wrapper) return;
+
+  var productSlug = wrapper.dataset.podProduct;
+  var templateSlug = wrapper.dataset.podTemplate;
+  var studioBaseUrl = wrapper.dataset.podStudioUrl;
+  var modal = document.getElementById('pod-studio-modal');
+  var iframe = document.getElementById('pod-studio-iframe');
+  var openBtn = document.getElementById('pod-open-studio-btn');
+  var closeBtn = document.getElementById('pod-close-studio-btn');
+  var designHolder = document.getElementById('pod-design-id-holder');
+
+  openBtn.addEventListener('click', function() {
+    var studioUrl = studioBaseUrl + '/studio?product=' + productSlug + '&template=' + templateSlug + '&embed=1';
+    iframe.src = studioUrl;
+    modal.style.display = 'block';
+    document.body.style.overflow = 'hidden';
+  });
+
+  closeBtn.addEventListener('click', function() {
+    modal.style.display = 'none';
+    document.body.style.overflow = '';
+    iframe.src = 'about:blank';
+  });
+
+  // Listen for design saved message from studio iframe
+  window.addEventListener('message', function(event) {
+    if (!studioBaseUrl.startsWith(event.origin)) return;
+    if (!event.data || event.data.type !== 'pod:design-saved') return;
+
+    var designId = event.data.designId;
+    if (!designId) return;
+
+    // Store design ID
+    designHolder.textContent = designId;
+
+    // Inject hidden input into the Shopify add-to-cart form
+    var form = document.querySelector('form[action="/cart/add"]');
+    if (form) {
+      var existing = form.querySelector('input[name="properties[_pod_design_id]"]');
+      if (existing) {
+        existing.value = designId;
+      } else {
+        var input = document.createElement('input');
+        input.type = 'hidden';
+        input.name = 'properties[_pod_design_id]';
+        input.value = designId;
+        form.appendChild(input);
+      }
+    }
+
+    // Close modal
+    modal.style.display = 'none';
+    document.body.style.overflow = '';
+    iframe.src = 'about:blank';
+
+    // Update button text
+    openBtn.textContent = '✓ Design Saved — Edit Again';
+  });
+})();
+</script>
+
+{% schema %}
+{
+  "name": "Design Studio",
+  "target": "section",
+  "templates": ["product"],
+  "settings": []
+}
+{% endschema %}
+{% endif %}

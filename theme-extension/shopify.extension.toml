@@ -1,0 +1,16 @@
+# Shopify Theme App Extension configuration
+# This file defines how the design studio block appears in merchant themes
+
+api_version = "2024-07"
+
+[[extensions]]
+type = "theme"
+name = "Print Studio Design Tool"
+handle = "print-studio"
+
+  [extensions.settings]
+    [[extensions.settings.fields]]
+    key = "studio_url"
+    type = "single_line_text_field"
+    label = "Studio URL"
+    info = "Auto-configured. Do not change."

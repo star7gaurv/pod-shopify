@@ -1,0 +1,41 @@
+# nginx config for pod.star7gaurav.in
+# After running certbot, SSL blocks will be added automatically.
+# Copy this to /etc/nginx/sites-available/pod.star7gaurav.in
+# then: sudo ln -s /etc/nginx/sites-available/pod.star7gaurav.in /etc/nginx/sites-enabled/
+# then: sudo certbot --nginx -d pod.star7gaurav.in
+# then: sudo systemctl reload nginx
+
+server {
+    listen 80;
+    server_name pod.star7gaurav.in;
+
+    # Allow large uploads (design files, 3D models)
+    client_max_body_size 100M;
+
+    # Security: Allow Shopify to embed admin in iframe
+    add_header Content-Security-Policy "frame-ancestors https://*.myshopify.com https://admin.shopify.com;" always;
+
+    location / {
+        proxy_pass http://127.0.0.1:3001;
+        proxy_http_version 1.1;
+
+        # WebSocket support (required for Next.js HMR in dev)
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        proxy_read_timeout 60s;
+        proxy_buffering off;
+    }
+
+    # Serve Next.js static assets directly via nginx for better performance
+    location /_next/static/ {
+        proxy_pass http://127.0.0.1:3001;
+        proxy_cache_valid 200 1y;
+        add_header Cache-Control "public, max-age=31536000, immutable";
+    }
+}
