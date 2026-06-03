@@ -1,16 +1,19 @@
 import { NextResponse } from "next/server";
-import { requireShop } from "@/lib/merchant-auth";
+import { requireMerchantShop, merchantErrorResponse } from "@/lib/merchant-auth";
 import { shopifyApiCall } from "@/lib/shopify";
 import { prisma } from "@/lib/prisma";
 
 /** GET: Fetch Shopify products + our templates for mapping */
-export async function GET(request: Request) {
+export async function GET() {
   try {
-    const { searchParams } = new URL(request.url);
-    const shop = await requireShop(searchParams.get("shop"));
+    const shop = await requireMerchantShop();
 
     const [shopifyData, templates] = await Promise.all([
-      shopifyApiCall(shop.shopDomain, shop.accessToken, "products.json?limit=50&fields=id,title,handle,images,variants"),
+      shopifyApiCall(
+        shop.shopDomain,
+        shop.accessToken,
+        "products.json?limit=50&fields=id,title,handle,images,variants",
+      ),
       prisma.template.findMany({
         where: { isActive: true },
         include: { product: { select: { name: true, slug: true } } },
@@ -23,39 +26,60 @@ export async function GET(request: Request) {
       templates,
     });
   } catch (err) {
-    const msg = err instanceof Error ? err.message : "Error";
-    return NextResponse.json({ error: msg }, { status: 401 });
+    return merchantErrorResponse(err);
   }
 }
 
 /** POST: Save a product↔template mapping as Shopify metafields */
 export async function POST(request: Request) {
   try {
-    const { searchParams } = new URL(request.url);
-    const shop = await requireShop(searchParams.get("shop"));
+    const shop = await requireMerchantShop();
     const { shopifyProductId, productSlug, templateSlug } = (await request.json()) as {
       shopifyProductId: string;
       productSlug: string;
       templateSlug: string;
     };
 
+    if (!shopifyProductId || !productSlug || !templateSlug) {
+      return NextResponse.json({ error: "Missing fields" }, { status: 400 });
+    }
+
     // Save as Shopify metafields so the Theme Extension can read them
-    await shopifyApiCall(shop.shopDomain, shop.accessToken, `products/${shopifyProductId}/metafields.json`, {
-      method: "POST",
-      body: JSON.stringify({
-        metafield: { namespace: "pod", key: "product_slug", value: productSlug, type: "single_line_text_field" },
-      }),
-    });
-    await shopifyApiCall(shop.shopDomain, shop.accessToken, `products/${shopifyProductId}/metafields.json`, {
-      method: "POST",
-      body: JSON.stringify({
-        metafield: { namespace: "pod", key: "template_slug", value: templateSlug, type: "single_line_text_field" },
-      }),
-    });
+    await shopifyApiCall(
+      shop.shopDomain,
+      shop.accessToken,
+      `products/${shopifyProductId}/metafields.json`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          metafield: {
+            namespace: "pod",
+            key: "product_slug",
+            value: productSlug,
+            type: "single_line_text_field",
+          },
+        }),
+      },
+    );
+    await shopifyApiCall(
+      shop.shopDomain,
+      shop.accessToken,
+      `products/${shopifyProductId}/metafields.json`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          metafield: {
+            namespace: "pod",
+            key: "template_slug",
+            value: templateSlug,
+            type: "single_line_text_field",
+          },
+        }),
+      },
+    );
 
     return NextResponse.json({ success: true });
   } catch (err) {
-    const msg = err instanceof Error ? err.message : "Error";
-    return NextResponse.json({ error: msg }, { status: 400 });
+    return merchantErrorResponse(err);
   }
 }

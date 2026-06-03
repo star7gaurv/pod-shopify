@@ -8,6 +8,7 @@ import {
   getAppUrl,
 } from "@/lib/shopify";
 import { prisma } from "@/lib/prisma";
+import { mintMerchantCookie } from "@/lib/merchant-session";
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -53,21 +54,33 @@ export async function GET(request: Request) {
       console.error("Webhook registration failed for", shop, err),
     );
 
-    // Check if merchant has an active subscription
+    // Mint a merchant session cookie so the dashboard works WITHOUT ?shop=.
+    // From here on, identity is in the cookie — not the URL.
+    await mintMerchantCookie({
+      shopId: shopRecord.id,
+      shopDomain: shopRecord.shopDomain,
+    });
+
+    // Decide where to land. New installs (or cancelled subscriptions) go
+    // to onboarding; everyone else to the dashboard. No `?shop=` in URLs.
     const subscription = await prisma.subscription.findUnique({
       where: { shopId: shopRecord.id },
     });
 
     const appUrl = getAppUrl();
+    const needsOnboarding =
+      !subscription || subscription.status === "cancelled";
 
-    // If no subscription yet, redirect to billing page; otherwise go to dashboard
-    if (!subscription || subscription.status === "cancelled") {
-      return NextResponse.redirect(`${appUrl}/merchant/subscribe?shop=${shop}`);
-    }
+    const dest = needsOnboarding
+      ? "/merchant/onboarding"
+      : "/merchant/dashboard";
 
-    return NextResponse.redirect(`${appUrl}/merchant/dashboard?shop=${shop}`);
+    return NextResponse.redirect(`${appUrl}${dest}`);
   } catch (error) {
     console.error("Shopify OAuth callback error:", error);
-    return NextResponse.json({ error: "Installation failed. Please try again." }, { status: 500 });
+    return NextResponse.json(
+      { error: "Installation failed. Please try again." },
+      { status: 500 },
+    );
   }
 }

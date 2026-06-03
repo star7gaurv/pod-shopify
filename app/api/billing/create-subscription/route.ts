@@ -1,52 +1,52 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { createSubscription, type PlanKey } from "@/lib/razorpay";
+import { requireMerchantShop, merchantErrorResponse } from "@/lib/merchant-auth";
+
+const VALID_PLANS: PlanKey[] = ["starter", "pro"];
 
 export async function POST(request: Request) {
   try {
-    const { shop, plan } = (await request.json()) as { shop?: string; plan?: string };
+    // Identity comes from the merchant session — NOT the request body.
+    // This is what prevents an attacker from upgrading someone else's shop.
+    const shop = await requireMerchantShop();
 
-    if (!shop || !plan || !["starter", "pro"].includes(plan)) {
-      return NextResponse.json({ error: "Invalid shop or plan" }, { status: 400 });
+    const body = (await request.json()) as { plan?: string };
+    const plan = body.plan;
+    if (!plan || !VALID_PLANS.includes(plan as PlanKey)) {
+      return NextResponse.json({ error: "Invalid plan" }, { status: 400 });
     }
 
-    const shopRecord = await prisma.shop.findUnique({ where: { shopDomain: shop } });
-    if (!shopRecord || !shopRecord.isActive) {
-      return NextResponse.json({ error: "Shop not found or not installed" }, { status: 404 });
-    }
+    const rzSubscription = await createSubscription(plan as PlanKey, shop.shopDomain);
 
-    const rzSubscription = await createSubscription(plan as PlanKey, shop);
+    const trialEndsAt = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000);
 
-    // Upsert subscription record
+    // Upsert the Subscription row. NOTE: we DO NOT touch `shop.plan` here
+    // — that flips only when the Razorpay webhook fires
+    // `subscription.activated`. Otherwise a user who bails out of the
+    // Razorpay modal would be left on a paid plan they never paid for.
     await prisma.subscription.upsert({
-      where: { shopId: shopRecord.id },
+      where: { shopId: shop.id },
       update: {
         razorpayPlanId: rzSubscription.plan_id,
         razorpaySubId: rzSubscription.id,
         status: rzSubscription.status,
-        trialEndsAt: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
+        trialEndsAt,
       },
       create: {
-        shopId: shopRecord.id,
+        shopId: shop.id,
         razorpayPlanId: rzSubscription.plan_id,
         razorpaySubId: rzSubscription.id,
         status: rzSubscription.status,
-        trialEndsAt: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
+        trialEndsAt,
       },
-    });
-
-    // Update shop plan
-    await prisma.shop.update({
-      where: { id: shopRecord.id },
-      data: { plan },
     });
 
     return NextResponse.json({
       subscriptionId: rzSubscription.id,
       razorpayKey: process.env.RAZORPAY_KEY_ID,
     });
-  } catch (error) {
-    console.error("create-subscription error:", error);
-    return NextResponse.json({ error: "Failed to create subscription" }, { status: 500 });
+  } catch (err) {
+    return merchantErrorResponse(err);
   }
 }

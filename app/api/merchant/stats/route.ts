@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireShop } from "@/lib/merchant-auth";
+import { requireMerchantShop, merchantErrorResponse } from "@/lib/merchant-auth";
 
-export async function GET(request: Request) {
+export async function GET() {
   try {
-    const shop = await requireShop(new URL(request.url).searchParams.get("shop"));
+    const shop = await requireMerchantShop();
 
     const now = new Date();
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -30,6 +30,7 @@ export async function GET(request: Request) {
     });
 
     return NextResponse.json({
+      shopDomain: shop.shopDomain,
       totalOrders,
       pendingOrders,
       monthOrders: monthOrders.length,
@@ -39,7 +40,6 @@ export async function GET(request: Request) {
       subscription,
     });
   } catch (err) {
-    const msg = err instanceof Error ? err.message : "Error";
-    return NextResponse.json({ error: msg }, { status: 401 });
+    return merchantErrorResponse(err);
   }
 }
