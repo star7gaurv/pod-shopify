@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useSearchParams } from "next/navigation";
 
 type Plan = {
   key: string;
@@ -40,8 +39,6 @@ const PLANS: Plan[] = [
 ];
 
 export default function SubscribePage() {
-  const searchParams = useSearchParams();
-  const shop = searchParams.get("shop") ?? "";
   const [loading, setLoading] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -50,13 +47,18 @@ export default function SubscribePage() {
     setError(null);
 
     try {
+      // No `shop` in the body — identity comes from the merchant cookie.
       const res = await fetch("/api/billing/create-subscription", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ shop, plan: planKey }),
+        body: JSON.stringify({ plan: planKey }),
       });
 
-      const data = (await res.json()) as { subscriptionId?: string; razorpayKey?: string; error?: string };
+      const data = (await res.json()) as {
+        subscriptionId?: string;
+        razorpayKey?: string;
+        error?: string;
+      };
 
       if (!res.ok || !data.subscriptionId) {
         throw new Error(data.error ?? "Failed to create subscription");
@@ -81,7 +83,10 @@ export default function SubscribePage() {
         description: `${planKey.charAt(0).toUpperCase() + planKey.slice(1)} Plan — 14-day free trial`,
         theme: { color: "#EE0979" },
         handler: () => {
-          window.location.href = `/merchant/dashboard?shop=${shop}`;
+          // Razorpay's webhook is the source of truth for plan activation.
+          // We land on the dashboard, which will reflect the new status
+          // once the webhook fires (usually within a few seconds).
+          window.location.href = "/merchant/dashboard";
         },
       });
 

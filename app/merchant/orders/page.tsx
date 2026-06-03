@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { useSearchParams } from "next/navigation";
 
 type Order = {
   id: string;
@@ -34,9 +33,6 @@ const FULFILLMENT_COLORS: Record<string, string> = {
 };
 
 export default function MerchantOrders() {
-  const searchParams = useSearchParams();
-  const shop = searchParams.get("shop") ?? "";
-
   const [orders, setOrders] = useState<Order[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -47,7 +43,7 @@ export default function MerchantOrders() {
   const loadOrders = useCallback(async (p = 1) => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/merchant/orders?shop=${shop}&page=${p}`);
+      const res = await fetch(`/api/merchant/orders?page=${p}`);
       const data = (await res.json()) as { orders: Order[]; total: number; page: number; pages: number };
       setOrders(data.orders ?? []);
       setTotal(data.total ?? 0);
@@ -56,13 +52,15 @@ export default function MerchantOrders() {
     } finally {
       setLoading(false);
     }
-  }, [shop]);
+  }, []);
 
-  useEffect(() => { if (shop) void loadOrders(1); }, [shop, loadOrders]);
+  useEffect(() => {
+    void loadOrders(1);
+  }, [loadOrders]);
 
   async function updateStatus(orderId: string, status: string) {
     setUpdating(orderId);
-    await fetch(`/api/merchant/orders?shop=${shop}`, {
+    await fetch("/api/merchant/orders", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ orderId, status }),

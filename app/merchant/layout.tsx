@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useSearchParams } from "next/navigation";
-import { Suspense } from "react";
+import { usePathname } from "next/navigation";
+import { Suspense, useEffect, useState } from "react";
 
 const NAV = [
   { href: "/merchant/dashboard", label: "Dashboard", icon: "◈" },
@@ -14,23 +14,42 @@ const NAV = [
 
 function MerchantNav() {
   const pathname = usePathname();
-  const searchParams = useSearchParams();
-  const shop = searchParams.get("shop") ?? "";
+  const [shopDomain, setShopDomain] = useState<string>("");
+
+  // Pull the shop label from the authenticated stats endpoint. The cookie
+  // identifies the merchant — there is no `?shop=` in any URL anymore.
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/merchant/stats")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: { shopDomain?: string } | null) => {
+        if (!cancelled && d?.shopDomain) setShopDomain(d.shopDomain);
+      })
+      .catch(() => {
+        // Silent — layout still works without the label.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   return (
     <nav className="fixed top-0 left-0 h-full w-56 bg-gray-900 border-r border-white/8 flex flex-col z-40">
       <div className="p-5 border-b border-white/8">
         <div className="text-pink-400 font-bold text-lg tracking-tight">Print Studio</div>
-        <div className="text-gray-500 text-xs mt-1 truncate">{shop}</div>
+        {shopDomain && (
+          <div className="text-gray-500 text-xs mt-1 truncate" title={shopDomain}>
+            {shopDomain}
+          </div>
+        )}
       </div>
       <ul className="flex-1 py-4 space-y-1">
         {NAV.map(({ href, label, icon }) => {
           const active = pathname === href;
-          const url = shop ? `${href}?shop=${shop}` : href;
           return (
             <li key={href}>
               <Link
-                href={url}
+                href={href}
                 className={`flex items-center gap-3 px-5 py-3 text-sm font-medium transition-colors rounded-lg mx-2 ${
                   active
                     ? "bg-pink-500/20 text-pink-300"

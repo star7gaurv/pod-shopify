@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useSearchParams } from "next/navigation";
 
 type ShopifyProduct = {
   id: number;
@@ -18,9 +17,6 @@ type StudioTemplate = {
 };
 
 export default function MerchantProducts() {
-  const searchParams = useSearchParams();
-  const shop = searchParams.get("shop") ?? "";
-
   const [shopifyProducts, setShopifyProducts] = useState<ShopifyProduct[]>([]);
   const [templates, setTemplates] = useState<StudioTemplate[]>([]);
   const [loading, setLoading] = useState(true);
@@ -30,8 +26,7 @@ export default function MerchantProducts() {
   const [success, setSuccess] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!shop) return;
-    fetch(`/api/merchant/products?shop=${shop}`)
+    fetch("/api/merchant/products")
       .then((r) => r.json())
       .then((d: { shopifyProducts: ShopifyProduct[]; templates: StudioTemplate[] }) => {
         setShopifyProducts(d.shopifyProducts ?? []);
@@ -39,7 +34,7 @@ export default function MerchantProducts() {
       })
       .catch(() => setError("Failed to load products"))
       .finally(() => setLoading(false));
-  }, [shop]);
+  }, []);
 
   async function handleMap(product: ShopifyProduct, templateSlug: string) {
     if (!templateSlug) return;
@@ -50,7 +45,7 @@ export default function MerchantProducts() {
     setError(null);
     setSuccess(null);
     try {
-      const res = await fetch(`/api/merchant/products?shop=${shop}`, {
+      const res = await fetch("/api/merchant/products", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

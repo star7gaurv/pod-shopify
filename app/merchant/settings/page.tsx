@@ -1,11 +1,8 @@
 "use client";
 
-import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 
 export default function MerchantSettings() {
-  const searchParams = useSearchParams();
-  const shop = searchParams.get("shop") ?? "";
   const appUrl = "https://pod.star7gaurav.in";
 
   return (
@@ -36,7 +33,7 @@ export default function MerchantSettings() {
             <li>Save the theme</li>
           </ol>
           <Link
-            href={`/merchant/products?shop=${shop}`}
+            href="/merchant/products"
             className="mt-4 inline-block text-pink-400 text-sm hover:underline"
           >
             → Connect products to templates first

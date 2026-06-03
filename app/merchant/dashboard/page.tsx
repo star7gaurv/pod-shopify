@@ -1,10 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 
 type Stats = {
+  shopDomain: string;
   totalOrders: number;
   pendingOrders: number;
   monthOrders: number;
@@ -29,18 +29,15 @@ function StatCard({ label, value, sub }: { label: string; value: string | number
 }
 
 export default function MerchantDashboard() {
-  const searchParams = useSearchParams();
-  const shop = searchParams.get("shop") ?? "";
   const [stats, setStats] = useState<Stats | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!shop) return;
-    fetch(`/api/merchant/stats?shop=${shop}`)
+    fetch("/api/merchant/stats")
       .then((r) => r.json())
       .then((d: Stats) => setStats(d))
       .finally(() => setLoading(false));
-  }, [shop]);
+  }, []);
 
   const planBadge = stats?.plan === "pro"
     ? "bg-purple-500/20 text-purple-300"
@@ -57,7 +54,9 @@ export default function MerchantDashboard() {
       <div className="flex items-center justify-between mb-8">
         <div>
           <h1 className="text-2xl font-black">Dashboard</h1>
-          <p className="text-gray-500 text-sm mt-1">{shop}</p>
+          {stats?.shopDomain && (
+            <p className="text-gray-500 text-sm mt-1">{stats.shopDomain}</p>
+          )}
         </div>
         {stats && (
           <span className={`px-3 py-1 rounded-full text-xs font-semibold uppercase ${planBadge}`}>
@@ -86,7 +85,7 @@ export default function MerchantDashboard() {
             <div className="mb-6 p-4 bg-amber-900/30 border border-amber-600/40 rounded-xl text-amber-300 text-sm flex items-center justify-between">
               <span>Free trial ends on {trialEnd}. Add a payment method to keep your store running.</span>
               <Link
-                href={`/merchant/subscription?shop=${shop}`}
+                href="/merchant/subscription"
                 className="ml-4 px-3 py-1 bg-amber-500 text-black font-semibold rounded-lg text-xs whitespace-nowrap"
               >
                 Upgrade Now
@@ -97,7 +96,7 @@ export default function MerchantDashboard() {
           {/* Quick actions */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <Link
-              href={`/merchant/products?shop=${shop}`}
+              href="/merchant/products"
               className="bg-gray-900 border border-white/8 rounded-2xl p-5 hover:border-pink-500/40 transition-colors group"
             >
               <div className="text-2xl mb-2">⬡</div>
@@ -107,7 +106,7 @@ export default function MerchantDashboard() {
               <p className="text-gray-500 text-sm mt-1">Link Shopify products to print templates</p>
             </Link>
             <Link
-              href={`/merchant/orders?shop=${shop}`}
+              href="/merchant/orders"
               className="bg-gray-900 border border-white/8 rounded-2xl p-5 hover:border-pink-500/40 transition-colors group"
             >
               <div className="text-2xl mb-2">📦</div>
@@ -119,7 +118,7 @@ export default function MerchantDashboard() {
               </p>
             </Link>
             <a
-              href={`/studio`}
+              href="/studio"
               target="_blank"
               rel="noopener noreferrer"
               className="bg-gray-900 border border-white/8 rounded-2xl p-5 hover:border-pink-500/40 transition-colors group"

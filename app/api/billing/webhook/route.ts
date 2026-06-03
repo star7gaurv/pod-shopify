@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { verifyWebhookSignature } from "@/lib/razorpay";
+import { verifyWebhookSignature, PLANS, type PlanKey } from "@/lib/razorpay";
 import { prisma } from "@/lib/prisma";
 
 type RazorpayWebhookPayload = {
@@ -15,6 +15,14 @@ type RazorpayWebhookPayload = {
     };
   };
 };
+
+/** Map a Razorpay plan_id back to our internal plan key. */
+function planKeyFromRazorpayPlanId(planId: string): PlanKey | null {
+  for (const [key, id] of Object.entries(PLANS) as Array<[PlanKey, string]>) {
+    if (id && id === planId) return key;
+  }
+  return null;
+}
 
 export async function POST(request: Request) {
   const rawBody = await request.text();
@@ -43,7 +51,13 @@ export async function POST(request: Request) {
 
     switch (event.event) {
       case "subscription.activated":
-      case "subscription.charged":
+      case "subscription.charged": {
+        // The merchant has actually paid — now we can flip their plan.
+        // create-subscription INTENTIONALLY does not do this so that a
+        // user who bails out of the Razorpay modal isn't left on a paid
+        // plan they never paid for.
+        const planKey = planKeyFromRazorpayPlanId(subEntity.plan_id);
+
         await prisma.subscription.update({
           where: { id: subscription.id },
           data: {
@@ -53,7 +67,20 @@ export async function POST(request: Request) {
               : undefined,
           },
         });
+
+        if (planKey) {
+          await prisma.shop.update({
+            where: { id: subscription.shopId },
+            data: { plan: planKey },
+          });
+        } else {
+          console.warn(
+            "Razorpay webhook: unrecognised plan_id, leaving shop.plan unchanged",
+            subEntity.plan_id,
+          );
+        }
         break;
+      }
 
       case "subscription.halted":
         await prisma.subscription.update({

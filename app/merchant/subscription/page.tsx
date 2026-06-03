@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useSearchParams } from "next/navigation";
 
 type SubInfo = {
   plan: string;
@@ -54,34 +53,31 @@ const PLANS: Plan[] = [
 ];
 
 export default function MerchantSubscription() {
-  const searchParams = useSearchParams();
-  const shop = searchParams.get("shop") ?? "";
   const [info, setInfo] = useState<SubInfo | null>(null);
   const [loading, setLoading] = useState(true);
   const [subscribing, setSubscribing] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!shop) return;
-    fetch(`/api/merchant/stats?shop=${shop}`)
+    fetch("/api/merchant/stats")
       .then((r) => r.json())
       .then((d: SubInfo) => setInfo(d))
       .finally(() => setLoading(false));
-  }, [shop]);
+  }, []);
 
   async function handleSubscribe(planKey: string) {
     setSubscribing(planKey);
     setError(null);
     try {
+      // No `shop` in the body — identity comes from the merchant cookie.
       const res = await fetch("/api/billing/create-subscription", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ shop, plan: planKey }),
+        body: JSON.stringify({ plan: planKey }),
       });
       const data = (await res.json()) as { subscriptionId?: string; razorpayKey?: string; error?: string };
       if (!res.ok || !data.subscriptionId) throw new Error(data.error ?? "Failed");
 
-      // Dynamically load Razorpay
       await new Promise<void>((resolve, reject) => {
         const script = document.createElement("script");
         script.src = "https://checkout.razorpay.com/v1/checkout.js";
@@ -98,6 +94,7 @@ export default function MerchantSubscription() {
         description: `${planKey} Plan — 14-day free trial`,
         theme: { color: "#EE0979" },
         handler: () => {
+          // Optimistic UI — Razorpay webhook is the actual source of truth.
           setInfo((prev) => prev ? { ...prev, plan: planKey, subscription: { status: "active" } } : prev);
         },
       });
