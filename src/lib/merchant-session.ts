@@ -13,6 +13,12 @@ import { cookies } from "next/headers";
  *
  * SameSite is `none` because the app runs inside the Shopify Admin
  * iframe. `secure: true` is therefore mandatory.
+ *
+ * NOTE: the session intentionally carries only stable identifiers
+ * (shopId, shopDomain). It does NOT carry `plan` — plan can change
+ * mid-session via Razorpay webhooks, and a snapshot in the cookie would
+ * go stale. Callers that need the plan should fetch it from the DB via
+ * `requireMerchantShop()`.
  */
 
 const COOKIE_NAME = "ps_merchant";
@@ -21,7 +27,6 @@ const MAX_AGE_SECONDS = 60 * 60 * 24 * 7; // 7 days
 export type MerchantSession = {
   shopId: string;
   shopDomain: string;
-  plan: string;
 };
 
 function getSecret(): Uint8Array {
@@ -55,13 +60,11 @@ export async function verifyMerchantSession(
     });
     if (
       typeof payload.shopId === "string" &&
-      typeof payload.shopDomain === "string" &&
-      typeof payload.plan === "string"
+      typeof payload.shopDomain === "string"
     ) {
       return {
         shopId: payload.shopId,
         shopDomain: payload.shopDomain,
-        plan: payload.plan,
       };
     }
     return null;
@@ -70,8 +73,11 @@ export async function verifyMerchantSession(
   }
 }
 
-/** Set the cookie on the response. Call after `signMerchantSession`. */
-export async function setMerchantCookie(token: string): Promise<void> {
+/** Sign + set the cookie in one step (server components / route handlers). */
+export async function mintMerchantCookie(
+  session: MerchantSession,
+): Promise<void> {
+  const token = await signMerchantSession(session);
   (await cookies()).set(COOKIE_NAME, token, {
     httpOnly: true,
     secure: true,
@@ -81,39 +87,11 @@ export async function setMerchantCookie(token: string): Promise<void> {
   });
 }
 
-/** Convenience: sign + set in one step (server components / route handlers). */
-export async function mintMerchantCookie(
-  session: MerchantSession,
-): Promise<void> {
-  const token = await signMerchantSession(session);
-  await setMerchantCookie(token);
-}
-
 /** Read + verify the cookie from the current request context. */
 export async function readMerchantSession(): Promise<MerchantSession | null> {
   const token = (await cookies()).get(COOKIE_NAME)?.value;
   if (!token) return null;
   return verifyMerchantSession(token);
-}
-
-/**
- * Use in API routes: returns the session or throws a 401 Response.
- * Catch the Response and return it directly.
- */
-export async function requireMerchantSession(): Promise<MerchantSession> {
-  const session = await readMerchantSession();
-  if (!session) {
-    throw new Response(
-      JSON.stringify({ error: "Unauthorized" }),
-      { status: 401, headers: { "content-type": "application/json" } },
-    );
-  }
-  return session;
-}
-
-/** Clear the cookie (logout / uninstall). */
-export async function clearMerchantCookie(): Promise<void> {
-  (await cookies()).delete(COOKIE_NAME);
 }
 
 export const MERCHANT_COOKIE_NAME = COOKIE_NAME;

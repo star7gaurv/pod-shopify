@@ -50,12 +50,11 @@ export async function POST(request: Request) {
     }
 
     switch (event.event) {
-      case "subscription.activated":
-      case "subscription.charged": {
-        // The merchant has actually paid — now we can flip their plan.
-        // create-subscription INTENTIONALLY does not do this so that a
-        // user who bails out of the Razorpay modal isn't left on a paid
-        // plan they never paid for.
+      case "subscription.activated": {
+        // Activation is the only event where we flip the merchant's plan.
+        // create-subscription INTENTIONALLY does not, so a user who bails
+        // out of the Razorpay modal isn't left on a paid plan they never
+        // paid for.
         const planKey = planKeyFromRazorpayPlanId(subEntity.plan_id);
 
         await prisma.subscription.update({
@@ -79,6 +78,34 @@ export async function POST(request: Request) {
             subEntity.plan_id,
           );
         }
+        break;
+      }
+
+      case "subscription.charged": {
+        // Every billing cycle. Refresh status + period end only. We do
+        // NOT touch shop.plan here — if a future code path lets a
+        // merchant upgrade/downgrade through Razorpay's API directly,
+        // rewriting plan on every charge would silently revert the
+        // change. Warn if the looked-up sub's plan_id ever drifts from
+        // what Razorpay reports so we notice.
+        if (
+          subscription.razorpayPlanId &&
+          subscription.razorpayPlanId !== subEntity.plan_id
+        ) {
+          console.warn(
+            "Razorpay subscription.charged: plan_id drift",
+            { stored: subscription.razorpayPlanId, fromRazorpay: subEntity.plan_id },
+          );
+        }
+        await prisma.subscription.update({
+          where: { id: subscription.id },
+          data: {
+            status: "active",
+            currentPeriodEnd: subEntity.current_end
+              ? new Date(subEntity.current_end * 1000)
+              : undefined,
+          },
+        });
         break;
       }
 

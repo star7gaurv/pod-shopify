@@ -18,7 +18,7 @@ export default async function MerchantEntry() {
 
   // Middleware should have ensured we have a session, but guard anyway.
   if (!session) {
-    redirect("/");
+    redirect("/merchant/welcome");
   }
 
   const subscription = await prisma.subscription.findUnique({

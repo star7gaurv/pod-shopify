@@ -4,6 +4,7 @@ import type { Shop } from "@prisma/client";
 import {
   readMerchantSession,
   mintMerchantCookie,
+  MERCHANT_COOKIE_NAME,
 } from "@/lib/merchant-session";
 import { isValidShopDomain } from "@/lib/shopify";
 
@@ -42,6 +43,17 @@ export async function getMerchantShop(): Promise<Shop | null> {
   }
 
   // Middleware-verified Shopify session token path.
+  //
+  // This branch only runs when the request lacked a valid cookie but
+  // carried a verifiable Shopify session token (typically App Bridge's
+  // `Authorization: Bearer …`). We mint a fresh cookie so that any
+  // subsequent navigation/fetch that does send cookies can skip the
+  // JWT verification round trip. App-Bridge-only callers will hit this
+  // every request, but the cost is a single Set-Cookie header on the
+  // response — negligible compared to the DB lookup we already need to
+  // do, and the alternative (no cookie ever) would prevent direct
+  // browser navigation (e.g. bookmarks, "Open app in new tab") from
+  // working without going through Shopify's iframe.
   const headerStore = await headers();
   const verifiedShop = headerStore.get("x-ps-verified-shop");
   if (verifiedShop && isValidShopDomain(verifiedShop)) {
@@ -50,11 +62,9 @@ export async function getMerchantShop(): Promise<Shop | null> {
     });
     if (!shop) return null;
 
-    // Mint a cookie so subsequent requests don't need the token round-trip.
     await mintMerchantCookie({
       shopId: shop.id,
       shopDomain: shop.shopDomain,
-      plan: shop.plan,
     });
     return shop;
   }
@@ -77,9 +87,17 @@ export async function requireMerchantShop(): Promise<Shop> {
 /** Translate any thrown error into a JSON response with the right status. */
 export function merchantErrorResponse(err: unknown): Response {
   if (err instanceof UnauthorizedError) {
+    // Clear any lingering ps_merchant cookie. Otherwise a merchant whose
+    // shop was uninstalled (or deactivated server-side) would keep sending
+    // a cryptographically-valid-but-orphaned cookie for up to 7 days and
+    // see a permanent 401 loop. Set-Cookie with Max-Age=0 expires it now.
+    const clear = `${MERCHANT_COOKIE_NAME}=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=None`;
     return new Response(JSON.stringify({ error: err.message }), {
       status: err.status,
-      headers: { "content-type": "application/json" },
+      headers: {
+        "content-type": "application/json",
+        "set-cookie": clear,
+      },
     });
   }
   const message = err instanceof Error ? err.message : "Internal error";

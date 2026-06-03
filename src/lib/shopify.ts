@@ -112,6 +112,46 @@ export async function shopifyApiCall(
   return res.json();
 }
 
+/**
+ * Count how many of a shop's products have been mapped to a Print Studio
+ * template — i.e. carry a `pod.product_slug` metafield.
+ *
+ * Uses GraphQL because REST `/products.json` cannot filter by metafield.
+ * Wrapped in a timeout so a slow or rate-limited Shopify API can't hang
+ * pages that depend on the count; on any failure we return 0 and the
+ * caller's UI degrades to "step not done yet."
+ */
+export async function countMappedProducts(
+  shop: string,
+  accessToken: string,
+  timeoutMs = 3000,
+): Promise<number> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(`https://${shop}/admin/api/2024-07/graphql.json`, {
+      method: "POST",
+      signal: controller.signal,
+      headers: {
+        "X-Shopify-Access-Token": accessToken,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        query: `{ productsCount(query: "metafields.pod.product_slug:*") { count } }`,
+      }),
+    });
+    if (!res.ok) return 0;
+    const data = (await res.json()) as {
+      data?: { productsCount?: { count?: number } };
+    };
+    return data.data?.productsCount?.count ?? 0;
+  } catch {
+    return 0;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 /** Register a webhook on a merchant's store. */
 export async function registerWebhook(
   shop: string,

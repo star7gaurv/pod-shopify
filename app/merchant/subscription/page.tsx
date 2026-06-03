@@ -78,13 +78,17 @@ export default function MerchantSubscription() {
       const data = (await res.json()) as { subscriptionId?: string; razorpayKey?: string; error?: string };
       if (!res.ok || !data.subscriptionId) throw new Error(data.error ?? "Failed");
 
-      await new Promise<void>((resolve, reject) => {
-        const script = document.createElement("script");
-        script.src = "https://checkout.razorpay.com/v1/checkout.js";
-        script.onload = () => resolve();
-        script.onerror = reject;
-        document.head.appendChild(script);
-      });
+      // Don't re-inject the Razorpay bundle on repeat clicks — every
+      // click was previously leaking another <script> tag.
+      if (!document.querySelector('script[src*="checkout.razorpay.com"]')) {
+        await new Promise<void>((resolve, reject) => {
+          const script = document.createElement("script");
+          script.src = "https://checkout.razorpay.com/v1/checkout.js";
+          script.onload = () => resolve();
+          script.onerror = reject;
+          document.head.appendChild(script);
+        });
+      }
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const rzCheckout = new (window as any).Razorpay({

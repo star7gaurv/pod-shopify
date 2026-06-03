@@ -16,11 +16,12 @@ function MerchantNav() {
   const pathname = usePathname();
   const [shopDomain, setShopDomain] = useState<string>("");
 
-  // Pull the shop label from the authenticated stats endpoint. The cookie
-  // identifies the merchant — there is no `?shop=` in any URL anymore.
+  // Pull the shop label from a tiny identity endpoint. (Used to hit
+  // /api/merchant/stats — but the dashboard page also calls /stats, so
+  // every dashboard load was running the aggregation queries twice.)
   useEffect(() => {
     let cancelled = false;
-    fetch("/api/merchant/stats")
+    fetch("/api/merchant/me")
       .then((r) => (r.ok ? r.json() : null))
       .then((d: { shopDomain?: string } | null) => {
         if (!cancelled && d?.shopDomain) setShopDomain(d.shopDomain);

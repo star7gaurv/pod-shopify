@@ -22,6 +22,10 @@ function getShopifySecret(): Uint8Array {
   return new TextEncoder().encode(raw);
 }
 
+function getShopifyApiKey(): string | null {
+  return process.env.SHOPIFY_API_KEY ?? null;
+}
+
 const VALID_SHOP_RE = /^[a-zA-Z0-9][a-zA-Z0-9-]*\.myshopify\.com$/;
 
 async function isMerchantCookieValid(req: NextRequest): Promise<boolean> {
@@ -59,14 +63,37 @@ async function verifyShopifyToken(req: NextRequest): Promise<string | null> {
   if (!token) return null;
 
   try {
+    const apiKey = getShopifyApiKey();
     const { payload } = await jwtVerify(token, getShopifySecret(), {
       algorithms: ["HS256"],
       clockTolerance: 5,
+      // Defense-in-depth: pin the audience to our app's API key. A token
+      // minted by a different Shopify app cannot sign with our secret, so
+      // this is largely belt-and-braces — but cheap and matches Shopify's
+      // own session-token verification guidance.
+      ...(apiKey ? { audience: apiKey } : {}),
     });
     const dest = typeof payload.dest === "string" ? payload.dest : null;
     if (!dest) return null;
-    const host = new URL(dest).host;
+    let host: string;
+    try {
+      host = new URL(dest).host;
+    } catch {
+      return null;
+    }
     if (!VALID_SHOP_RE.test(host)) return null;
+
+    // `iss` must be the same shop as `dest`. Shopify documents this
+    // invariant; we check it so a forged-iss / mismatched-dest token is
+    // rejected even if the audience check is disabled in dev.
+    const iss = typeof payload.iss === "string" ? payload.iss : null;
+    if (iss) {
+      try {
+        if (new URL(iss).host !== host) return null;
+      } catch {
+        return null;
+      }
+    }
     return host;
   } catch {
     return null;
@@ -75,6 +102,15 @@ async function verifyShopifyToken(req: NextRequest): Promise<string | null> {
 
 function isMerchantPath(pathname: string): boolean {
   return pathname.startsWith("/merchant");
+}
+
+/**
+ * Merchant pages that should NOT require a session.
+ * `/merchant/welcome` is the fallback page shown when an unauthenticated
+ * user lands on /merchant/** — it must render without redirecting.
+ */
+function isPublicMerchantPage(pathname: string): boolean {
+  return pathname === "/merchant/welcome" || pathname.startsWith("/merchant/welcome/");
 }
 
 function isMerchantApi(pathname: string): boolean {
@@ -122,12 +158,28 @@ async function handleMerchantRequest(
     reqHeaders.set("x-ps-verified-shop", shopFromToken);
 
     if (isMerchantPath(pathname)) {
+      // Preserve the merchant's original query string in `next`, minus the
+      // id_token (which we've already consumed and is single-use). Without
+      // this, a deep link like /merchant/orders?page=3 would land them on
+      // /merchant/orders after the cookie mint.
+      const originalSearch = new URLSearchParams(request.nextUrl.search);
+      originalSearch.delete("id_token");
+      const tail = originalSearch.toString();
+      const nextValue = tail ? `${pathname}?${tail}` : pathname;
+
       const url = request.nextUrl.clone();
       url.pathname = "/api/merchant/session/exchange";
       url.search = "";
       url.searchParams.set("shop", shopFromToken);
-      url.searchParams.set("next", pathname);
-      return NextResponse.rewrite(url, { request: { headers: reqHeaders } });
+      url.searchParams.set("next", nextValue);
+      // Apply CSP on the rewritten response too. The exchange handler
+      // returns a 302 (so nothing is rendered in the iframe), but if
+      // Shopify ever changes how it sniffs response headers across
+      // redirects we don't want a missing CSP on the intermediate hop
+      // to fail the embed.
+      return applyShopifyCsp(
+        NextResponse.rewrite(url, { request: { headers: reqHeaders } }),
+      );
     }
 
     // API: forward the verified shop. The route handler mints the cookie.
@@ -142,12 +194,13 @@ async function handleMerchantRequest(
     );
   }
 
-  // Page request without auth — send to public home (which then routes
-  // through the install flow if shop is present).
-  const home = request.nextUrl.clone();
-  home.pathname = "/";
-  home.search = "";
-  return NextResponse.redirect(home);
+  // Page request without auth — show the friendly fallback page that
+  // explains how to open the app from Shopify (or install it). Better
+  // than silently dropping them on the public marketing homepage.
+  const welcome = request.nextUrl.clone();
+  welcome.pathname = "/merchant/welcome";
+  welcome.search = "";
+  return NextResponse.redirect(welcome);
 }
 
 export default auth(async (request) => {
@@ -164,6 +217,12 @@ export default auth(async (request) => {
       // /api/shopify and /api/billing/webhook are signature-verified by
       // their own handlers — don't gate them with the merchant cookie.
       return NextResponse.next();
+    }
+    if (isPublicMerchantPage(pathname)) {
+      // The unauthenticated fallback page — render it as-is, but still
+      // apply the iframe CSP so it works whether opened standalone or
+      // bounced into from inside Shopify.
+      return applyShopifyCsp(NextResponse.next());
     }
     return handleMerchantRequest(request);
   }

@@ -21,11 +21,32 @@ import { isValidShopDomain } from "@/lib/shopify";
  * matching middleware-set header, OR by re-verifying via `x-ps-verified-shop`.
  */
 
+/**
+ * Resolve `next` to a safe internal `/merchant/...` path.
+ *
+ * A naïve `startsWith("/merchant")` check is not enough: the input
+ * `/merchant/../../admin` passes that check, but `new URL(...)` later
+ * normalizes the dot-segments away and we'd 302 the user to `/admin`.
+ * Always parse + check the NORMALIZED pathname.
+ */
 function safeNextPath(input: string | null): string {
-  if (!input) return "/merchant/dashboard";
-  // only allow internal merchant paths — never a full URL
-  if (!input.startsWith("/merchant")) return "/merchant/dashboard";
-  return input;
+  const fallback = "/merchant/dashboard";
+  if (!input) return fallback;
+  // Reject anything that could resolve to a different origin.
+  if (input.startsWith("//") || /^[a-z][a-z0-9+\-.]*:/i.test(input)) {
+    return fallback;
+  }
+  let resolved: URL;
+  try {
+    resolved = new URL(input, "https://internal.invalid");
+  } catch {
+    return fallback;
+  }
+  if (resolved.origin !== "https://internal.invalid") return fallback;
+  if (!resolved.pathname.startsWith("/merchant/") && resolved.pathname !== "/merchant") {
+    return fallback;
+  }
+  return resolved.pathname + resolved.search;
 }
 
 export async function GET(request: Request) {
@@ -60,7 +81,6 @@ export async function GET(request: Request) {
   await mintMerchantCookie({
     shopId: shop.id,
     shopDomain: shop.shopDomain,
-    plan: shop.plan,
   });
 
   return NextResponse.redirect(new URL(next, request.url));

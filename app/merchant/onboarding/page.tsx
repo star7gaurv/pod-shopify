@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { readMerchantSession } from "@/lib/merchant-session";
+import { countMappedProducts } from "@/lib/shopify";
 import { OnboardingClient } from "./onboarding-client";
 
 /**
@@ -12,12 +13,19 @@ import { OnboardingClient } from "./onboarding-client";
  */
 export default async function OnboardingPage() {
   const session = await readMerchantSession();
-  if (!session) redirect("/");
+  if (!session) redirect("/merchant/welcome");
+
+  // We need the access token to count mapped products on Shopify.
+  // Same query the rest of the merchant surface uses.
+  const shop = await prisma.shop.findUnique({
+    where: { id: session.shopId, isActive: true },
+    select: { accessToken: true, shopDomain: true },
+  });
+  if (!shop) redirect("/merchant/welcome");
 
   const [productMapCount, subscription, designCount] = await Promise.all([
-    // Heuristic: at least one product has a `pod.product_slug` metafield
-    // — but we don't track that locally; just expose a stub for now.
-    Promise.resolve(0),
+    // Real count via Shopify GraphQL (with timeout fallback → 0).
+    countMappedProducts(shop.shopDomain, shop.accessToken),
     prisma.subscription.findUnique({
       where: { shopId: session.shopId },
       select: { status: true, trialEndsAt: true },

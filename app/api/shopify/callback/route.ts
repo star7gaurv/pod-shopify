@@ -59,7 +59,6 @@ export async function GET(request: Request) {
     await mintMerchantCookie({
       shopId: shopRecord.id,
       shopDomain: shopRecord.shopDomain,
-      plan: shopRecord.plan,
     });
 
     // Decide where to land. New installs (or cancelled subscriptions) go
