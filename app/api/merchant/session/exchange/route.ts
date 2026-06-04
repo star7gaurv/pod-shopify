@@ -30,7 +30,7 @@ import { isValidShopDomain } from "@/lib/shopify";
  * Always parse + check the NORMALIZED pathname.
  */
 function safeNextPath(input: string | null): string {
-  const fallback = "/merchant/dashboard";
+  const fallback = "/merchant";
   if (!input) return fallback;
   // Reject anything that could resolve to a different origin.
   if (input.startsWith("//") || /^[a-z][a-z0-9+\-.]*:/i.test(input)) {

@@ -27,6 +27,14 @@ export type StudioSavedDesign = {
 };
 
 export type SaveStudioDesignPayload = {
+  /**
+   * The storefront shop the customer is designing on (e.g.
+   * `acme.myshopify.com`), read from `?shop=` in the embedded studio URL.
+   * Used to attribute the design to a shop and to enforce the free-tier
+   * design limit. Unsigned and storefront-public — it only scopes a count,
+   * grants no privileged access.
+   */
+  shop: string | null;
   currentDesignId: string | null;
   currentShareToken: string | null;
   isLocked: boolean;

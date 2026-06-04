@@ -1,6 +1,21 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import {
+  Badge,
+  Banner,
+  BlockStack,
+  Card,
+  InlineStack,
+  Layout,
+  Page,
+  ResourceItem,
+  ResourceList,
+  Select,
+  SkeletonBodyText,
+  Text,
+  Thumbnail,
+} from "@shopify/polaris";
 
 type ShopifyProduct = {
   id: number;
@@ -56,7 +71,7 @@ export default function MerchantProducts() {
       });
       if (!res.ok) throw new Error("Mapping failed");
       setSavedMap((m) => ({ ...m, [product.id]: templateSlug }));
-      setSuccess(`"${product.title}" mapped to "${template.name}"`);
+      setSuccess(`"${product.title}" connected to "${template.name}"`);
     } catch {
       setError("Failed to save mapping");
     } finally {
@@ -64,96 +79,126 @@ export default function MerchantProducts() {
     }
   }
 
+  const templateOptions = [
+    { label: "Select a template…", value: "" },
+    ...templates.map((t) => ({
+      label: `${t.product.name} → ${t.name}`,
+      value: t.slug,
+    })),
+  ];
+
   return (
-    <div className="max-w-4xl">
-      <div className="mb-8">
-        <h1 className="text-2xl font-black">Connect Products</h1>
-        <p className="text-gray-500 text-sm mt-1">
-          Link each Shopify product to a print template. The 3D design studio will appear on that product&apos;s page.
-        </p>
-      </div>
+    <Page
+      title="Products"
+      subtitle="Connect each Shopify product to a print template. The 3D design studio appears on the products you connect."
+    >
+      <Layout>
+        {(error || success) && (
+          <Layout.Section>
+            {error && (
+              <Banner tone="critical" onDismiss={() => setError(null)}>
+                {error}
+              </Banner>
+            )}
+            {success && (
+              <Banner tone="success" onDismiss={() => setSuccess(null)}>
+                {success}
+              </Banner>
+            )}
+          </Layout.Section>
+        )}
 
-      {error && (
-        <div className="mb-4 p-3 bg-red-900/40 border border-red-700/50 rounded-xl text-red-300 text-sm">{error}</div>
-      )}
-      {success && (
-        <div className="mb-4 p-3 bg-green-900/40 border border-green-700/50 rounded-xl text-green-300 text-sm">
-          ✓ {success}
-        </div>
-      )}
-
-      {loading ? (
-        <div className="space-y-3">
-          {[...Array(4)].map((_, i) => (
-            <div key={i} className="bg-gray-900 border border-white/8 rounded-2xl p-5 h-20 animate-pulse" />
-          ))}
-        </div>
-      ) : shopifyProducts.length === 0 ? (
-        <div className="text-center py-16 text-gray-500">
-          <p className="text-4xl mb-3">📦</p>
-          <p>No products found in your Shopify store.</p>
-          <p className="text-sm mt-1">Add products in your Shopify admin, then come back here.</p>
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {shopifyProducts.map((product) => {
-            const mapped = savedMap[product.id];
-            return (
-              <div
-                key={product.id}
-                className="bg-gray-900 border border-white/8 rounded-2xl p-5 flex items-center gap-4"
-              >
-                {product.images[0] ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={product.images[0].src}
-                    alt={product.title}
-                    className="w-14 h-14 rounded-xl object-cover bg-gray-800 flex-shrink-0"
-                  />
-                ) : (
-                  <div className="w-14 h-14 rounded-xl bg-gray-800 flex-shrink-0 flex items-center justify-center text-2xl">
-                    👕
-                  </div>
-                )}
-
-                <div className="flex-1 min-w-0">
-                  <p className="font-semibold text-white truncate">{product.title}</p>
-                  <p className="text-gray-500 text-sm">{product.handle}</p>
-                </div>
-
-                <div className="flex items-center gap-3">
-                  {mapped && (
-                    <span className="text-green-400 text-sm">✓ Mapped</span>
-                  )}
-                  <select
-                    defaultValue=""
-                    onChange={(e) => handleMap(product, e.target.value)}
-                    disabled={saving === product.id}
-                    className="h-10 rounded-xl border border-white/10 bg-gray-800 px-3 text-sm text-white outline-none focus:border-pink-500 disabled:opacity-50"
-                  >
-                    <option value="">Select template…</option>
-                    {templates.map((t) => (
-                      <option key={t.id} value={t.slug}>
-                        {t.product.name} → {t.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+        <Layout.Section>
+          <Card padding="0">
+            {loading ? (
+              <div style={{ padding: 16 }}>
+                <SkeletonBodyText lines={6} />
               </div>
-            );
-          })}
-        </div>
-      )}
+            ) : shopifyProducts.length === 0 ? (
+              <div style={{ padding: 24 }}>
+                <BlockStack gap="200" inlineAlign="center">
+                  <Text as="p" variant="bodyMd" tone="subdued">
+                    No products found in your Shopify store.
+                  </Text>
+                  <Text as="p" variant="bodySm" tone="subdued">
+                    Add products in your Shopify admin, then come back here.
+                  </Text>
+                </BlockStack>
+              </div>
+            ) : (
+              <ResourceList
+                resourceName={{ singular: "product", plural: "products" }}
+                items={shopifyProducts}
+                renderItem={(product) => {
+                  const mapped = savedMap[product.id];
+                  return (
+                    <ResourceItem
+                      id={String(product.id)}
+                      onClick={() => {}}
+                      media={
+                        <Thumbnail
+                          source={
+                            product.images[0]?.src ??
+                            "https://cdn.shopify.com/s/files/1/0757/9955/files/empty-state.svg"
+                          }
+                          alt={product.title}
+                          size="small"
+                        />
+                      }
+                    >
+                      <InlineStack align="space-between" blockAlign="center" gap="400">
+                        <BlockStack gap="0">
+                          <InlineStack gap="200" blockAlign="center">
+                            <Text as="span" variant="bodyMd" fontWeight="semibold">
+                              {product.title}
+                            </Text>
+                            {mapped && <Badge tone="success">Connected</Badge>}
+                          </InlineStack>
+                          <Text as="span" variant="bodySm" tone="subdued">
+                            {product.handle}
+                          </Text>
+                        </BlockStack>
+                        <div style={{ minWidth: 240 }}>
+                          <Select
+                            label="Template"
+                            labelHidden
+                            options={templateOptions}
+                            value={mapped ?? ""}
+                            disabled={saving === product.id}
+                            onChange={(value) => handleMap(product, value)}
+                          />
+                        </div>
+                      </InlineStack>
+                    </ResourceItem>
+                  );
+                }}
+              />
+            )}
+          </Card>
+        </Layout.Section>
 
-      <div className="mt-8 p-5 bg-blue-900/20 border border-blue-700/30 rounded-2xl">
-        <p className="text-blue-300 font-semibold text-sm mb-2">How does this work?</p>
-        <ol className="text-blue-200/70 text-sm space-y-1 list-decimal list-inside">
-          <li>Map each Shopify product to a print template above.</li>
-          <li>Go to your Shopify theme editor and add the &quot;Design Studio&quot; block to your product page.</li>
-          <li>Customers will see a &quot;Customize This Product&quot; button and can design using the 3D studio.</li>
-          <li>When they checkout, the design is captured and sent to print automatically.</li>
-        </ol>
-      </div>
-    </div>
+        <Layout.Section>
+          <Card>
+            <BlockStack gap="200">
+              <Text as="h2" variant="headingMd">
+                How it works
+              </Text>
+              <Text as="p" variant="bodyMd" tone="subdued">
+                1. Connect each Shopify product to a print template above.
+              </Text>
+              <Text as="p" variant="bodyMd" tone="subdued">
+                2. In your theme editor, add the “Design Studio” block to your product page.
+              </Text>
+              <Text as="p" variant="bodyMd" tone="subdued">
+                3. Customers get a “Customize this product” button and design in the 3D studio.
+              </Text>
+              <Text as="p" variant="bodyMd" tone="subdued">
+                4. At checkout the design is captured and routed to print automatically.
+              </Text>
+            </BlockStack>
+          </Card>
+        </Layout.Section>
+      </Layout>
+    </Page>
   );
 }

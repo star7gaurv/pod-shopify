@@ -62,6 +62,8 @@ type StudioStore = {
   templatesError: string | null;
   templateError: string | null;
   designError: string | null;
+  /** True when a save was rejected because the shop hit its free-design cap. */
+  designLimitReached: boolean;
   activeView: StudioView;
   uvViewportFocus: UvViewportFocus;
   showUvGuide: boolean;
@@ -137,6 +139,7 @@ export const useStudioStore = create<StudioStore>((set) => ({
   templatesError: null,
   templateError: null,
   designError: null,
+  designLimitReached: false,
   activeView: "front",
   uvViewportFocus: "atlas",
   showUvGuide: true,
@@ -389,9 +392,14 @@ export const useStudioStore = create<StudioStore>((set) => ({
     set({
       designStatus: "saving",
       designError: null,
+      designLimitReached: false,
     });
 
     const payload = {
+      shop:
+        typeof window !== "undefined"
+          ? new URLSearchParams(window.location.search).get("shop")
+          : null,
       currentDesignId: state.currentDesign?.id ?? null,
       currentShareToken: state.currentDesign?.shareToken ?? null,
       isLocked: state.currentDesign?.isLocked ?? false,
@@ -436,8 +444,23 @@ export const useStudioStore = create<StudioStore>((set) => ({
 
       if (!response.ok) {
         const errorPayload = (await response.json().catch(() => null)) as
-          | { error?: string }
+          | { error?: string; message?: string }
           | null;
+        // Free-tier design cap — surface a friendly, distinct state instead
+        // of a generic error so the embed can prompt an upgrade.
+        if (
+          response.status === 402 ||
+          errorPayload?.error === "design_limit_reached"
+        ) {
+          set({
+            designStatus: "error",
+            designLimitReached: true,
+            designError:
+              errorPayload?.message ??
+              "This store has reached its free design limit.",
+          });
+          return null;
+        }
         throw new Error(errorPayload?.error || "Failed to save design.");
       }
 
