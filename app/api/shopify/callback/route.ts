@@ -61,21 +61,11 @@ export async function GET(request: Request) {
       shopDomain: shopRecord.shopDomain,
     });
 
-    // Decide where to land. New installs (or cancelled subscriptions) go
-    // to onboarding; everyone else to the dashboard. No `?shop=` in URLs.
-    const subscription = await prisma.subscription.findUnique({
-      where: { shopId: shopRecord.id },
-    });
-
+    // Land on the embedded Home surface. It carries the setup checklist and
+    // the free-designs counter, so there's no separate onboarding route to
+    // route to. No `?shop=` in URLs — identity is in the cookie now.
     const appUrl = getAppUrl();
-    const needsOnboarding =
-      !subscription || subscription.status === "cancelled";
-
-    const dest = needsOnboarding
-      ? "/merchant/onboarding"
-      : "/merchant/dashboard";
-
-    return NextResponse.redirect(`${appUrl}${dest}`);
+    return NextResponse.redirect(`${appUrl}/merchant`);
   } catch (error) {
     console.error("Shopify OAuth callback error:", error);
     return NextResponse.json(

@@ -1,98 +1,46 @@
-"use client";
+import "@shopify/polaris/build/esm/styles.css";
+import { MerchantProviders } from "./_providers";
+import { MerchantChrome } from "./_chrome";
 
-import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { Suspense, useEffect, useState } from "react";
-
-const NAV = [
-  { href: "/merchant/dashboard", label: "Dashboard", icon: "◈" },
-  { href: "/merchant/products", label: "Products", icon: "⬡" },
-  { href: "/merchant/orders", label: "Orders", icon: "📦" },
-  { href: "/merchant/subscription", label: "Subscription", icon: "⚡" },
-  { href: "/merchant/settings", label: "Settings", icon: "⚙" },
-] as const;
-
-function MerchantNav() {
-  const pathname = usePathname();
-  const [shopDomain, setShopDomain] = useState<string>("");
-
-  // Pull the shop label from a tiny identity endpoint. (Used to hit
-  // /api/merchant/stats — but the dashboard page also calls /stats, so
-  // every dashboard load was running the aggregation queries twice.)
-  useEffect(() => {
-    let cancelled = false;
-    fetch("/api/merchant/me")
-      .then((r) => (r.ok ? r.json() : null))
-      .then((d: { shopDomain?: string } | null) => {
-        if (!cancelled && d?.shopDomain) setShopDomain(d.shopDomain);
-      })
-      .catch(() => {
-        // Silent — layout still works without the label.
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+/**
+ * Layout for the embedded Shopify-admin app.
+ *
+ * Loads — scoped to `/merchant/**` only, so the public storefront and
+ * `/studio` never pay the Polaris/App-Bridge cost:
+ *   1. The `shopify-api-key` meta tag (App Bridge reads it to identify the app).
+ *   2. Shopify's App Bridge CDN script. Rendered from this server component so
+ *      it lands in the initial HTML and executes during parse — before any
+ *      merchant page fires its first `fetch` in a client effect. App Bridge
+ *      then auto-attaches `Authorization: Bearer <session token>` to those
+ *      fetches, which `middleware.ts` already verifies.
+ *   3. Polaris CSS + AppProvider so the UI looks native to Shopify admin.
+ *
+ * No `async`/`defer` on the script — Shopify requires it to run synchronously
+ * so it can patch network calls before the app uses them.
+ */
+export default function MerchantLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  const apiKey = process.env.SHOPIFY_API_KEY ?? "";
 
   return (
-    <nav className="fixed top-0 left-0 h-full w-56 bg-gray-900 border-r border-white/8 flex flex-col z-40">
-      <div className="p-5 border-b border-white/8">
-        <div className="text-pink-400 font-bold text-lg tracking-tight">Print Studio</div>
-        {shopDomain && (
-          <div className="text-gray-500 text-xs mt-1 truncate" title={shopDomain}>
-            {shopDomain}
-          </div>
-        )}
-      </div>
-      <ul className="flex-1 py-4 space-y-1">
-        {NAV.map(({ href, label, icon }) => {
-          const active = pathname === href;
-          return (
-            <li key={href}>
-              <Link
-                href={href}
-                className={`flex items-center gap-3 px-5 py-3 text-sm font-medium transition-colors rounded-lg mx-2 ${
-                  active
-                    ? "bg-pink-500/20 text-pink-300"
-                    : "text-gray-400 hover:text-white hover:bg-white/5"
-                }`}
-              >
-                <span>{icon}</span>
-                {label}
-              </Link>
-            </li>
-          );
-        })}
-      </ul>
-      <div className="p-4 border-t border-white/8">
-        <a
-          href="https://pod.star7gaurav.in"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-xs text-gray-600 hover:text-gray-400 transition-colors"
-        >
-          Powered by Print Studio
-        </a>
-      </div>
-    </nav>
-  );
-}
-
-export default function MerchantLayout({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="min-h-screen bg-gray-950 text-white">
-      <Suspense fallback={null}>
-        <MerchantNav />
-      </Suspense>
-      <main className="ml-56 p-8 min-h-screen">
-        <Suspense fallback={
-          <div className="flex items-center justify-center h-64 text-gray-600">
-            <div className="animate-pulse text-sm">Loading…</div>
-          </div>
-        }>
-          {children}
-        </Suspense>
-      </main>
-    </div>
+    <>
+      <meta name="shopify-api-key" content={apiKey} />
+      {/*
+        `async` is required for React 19 to hoist this script to <head>.
+        Without it, React renders a bare <script> into the body stream at the
+        component's DOM position — after hydration — and App Bridge wouldn't
+        patch fetch() before the first merchant useEffect fires. With `async`,
+        React 19 deduplicates and hoists it to <head> so it loads in parallel
+        with page parsing and is ready before client effects run.
+      */}
+      {/* eslint-disable-next-line @next/next/no-sync-scripts */}
+      <script async src="https://cdn.shopify.com/shopifycloud/app-bridge.js" />
+      <MerchantProviders>
+        <MerchantChrome>{children}</MerchantChrome>
+      </MerchantProviders>
+    </>
   );
 }

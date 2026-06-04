@@ -17,6 +17,7 @@
   data-pod-product="{{ product_slug }}"
   data-pod-template="{{ template_slug }}"
   data-pod-studio-url="{{ studio_base_url }}"
+  data-pod-shop="{{ shop.permanent_domain }}"
   style="margin: 16px 0;"
 >
   <button
@@ -94,6 +95,7 @@
   var productSlug = wrapper.dataset.podProduct;
   var templateSlug = wrapper.dataset.podTemplate;
   var studioBaseUrl = wrapper.dataset.podStudioUrl;
+  var shopDomain = wrapper.dataset.podShop;
   var modal = document.getElementById('pod-studio-modal');
   var iframe = document.getElementById('pod-studio-iframe');
   var openBtn = document.getElementById('pod-open-studio-btn');
@@ -101,7 +103,7 @@
   var designHolder = document.getElementById('pod-design-id-holder');
 
   openBtn.addEventListener('click', function() {
-    var studioUrl = studioBaseUrl + '/studio?product=' + productSlug + '&template=' + templateSlug + '&embed=1';
+    var studioUrl = studioBaseUrl + '/studio?product=' + productSlug + '&template=' + templateSlug + '&embed=1&shop=' + encodeURIComponent(shopDomain || '');
     iframe.src = studioUrl;
     modal.style.display = 'block';
     document.body.style.overflow = 'hidden';

@@ -49,6 +49,13 @@ export function StudioEmbedHandler() {
       try {
         const design = await saveCurrentDesign();
         if (!design) {
+          // Distinguish the free-tier cap from a generic failure so the
+          // customer understands it's the store's plan, not their design.
+          if (useStudioStore.getState().designLimitReached) {
+            btn.textContent = "Free design limit reached — ask the store to upgrade";
+            window.parent.postMessage({ type: "pod:design-limit" }, "*");
+            return;
+          }
           btn.textContent = "✓ Save Design & Apply to Product";
           btn.removeAttribute("disabled");
           return;

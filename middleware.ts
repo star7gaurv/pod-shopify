@@ -134,6 +134,17 @@ function applyShopifyCsp(res: NextResponse): NextResponse {
   return res;
 }
 
+/**
+ * The external dashboard must NEVER be embeddable (it's the non-iframe,
+ * password/token-authenticated surface). Pin it closed — the opposite of
+ * the Shopify-iframe CSP applied to /merchant.
+ */
+function denyEmbedding(res: NextResponse): NextResponse {
+  res.headers.set("Content-Security-Policy", "frame-ancestors 'none';");
+  res.headers.set("X-Frame-Options", "DENY");
+  return res;
+}
+
 async function handleMerchantRequest(
   request: NextRequest,
 ): Promise<NextResponse> {
@@ -211,6 +222,24 @@ export default auth(async (request) => {
     return applyShopifyCsp(NextResponse.next());
   }
 
+  // ── External merchant dashboard: own NextAuth realm, never embeddable ─────
+  if (pathname.startsWith("/dashboard")) {
+    // The login page must stay open so the one-time-token exchange can run.
+    if (pathname === "/dashboard/login" || pathname.startsWith("/dashboard/login/")) {
+      return denyEmbedding(NextResponse.next());
+    }
+    const user = request.auth?.user;
+    if (user && user.kind === "merchant") {
+      return denyEmbedding(NextResponse.next());
+    }
+    const login = request.nextUrl.clone();
+    login.pathname = "/dashboard/login";
+    login.search = pathname.startsWith("/dashboard")
+      ? `?next=${encodeURIComponent(pathname)}`
+      : "";
+    return NextResponse.redirect(login);
+  }
+
   // ── Merchant pages + APIs: require merchant session ───────────────────────
   if (isMerchantPath(pathname) || isMerchantApi(pathname)) {
     if (isPublicMerchantApi(pathname)) {
@@ -257,6 +286,7 @@ export const config = {
   matcher: [
     "/admin/:path*",
     "/merchant/:path*",
+    "/dashboard/:path*",
     "/studio/:path*",
     "/api/merchant/:path*",
     "/api/billing/:path*",

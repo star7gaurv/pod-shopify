@@ -58,6 +58,11 @@ export async function verifyMerchantSession(
     const { payload } = await jwtVerify(token, getSecret(), {
       algorithms: ["HS256"],
     });
+    // Reject purpose-scoped tokens (e.g. dashboard-login hand-off JWTs).
+    // Both token types carry shopId + shopDomain, so checking for a `purpose`
+    // field is the discriminant — a dashboard token must never be accepted as
+    // a persistent embedded-app session cookie.
+    if (typeof payload.purpose === "string") return null;
     if (
       typeof payload.shopId === "string" &&
       typeof payload.shopDomain === "string"
@@ -95,3 +100,49 @@ export async function readMerchantSession(): Promise<MerchantSession | null> {
 }
 
 export const MERCHANT_COOKIE_NAME = COOKIE_NAME;
+
+// ─── External-dashboard hand-off ────────────────────────────────────────────
+//
+// The embedded app already proved the merchant's identity (verified Shopify
+// session → ps_merchant cookie). To open the external dashboard — which lives
+// outside the iframe and can't see that cookie — we mint a short-lived,
+// purpose-scoped token the merchant carries in a new tab. The dashboard's
+// NextAuth "merchant-token" provider verifies it and starts its own session.
+//
+// Lifetime is deliberately tiny (2 min) so a leaked link can't be replayed
+// for long. (True single-use would need a server-side jti store — a sensible
+// follow-up, not required for this hand-off.)
+
+const DASHBOARD_TOKEN_PURPOSE = "dashboard-login";
+
+/** Mint a one-time token that authenticates a merchant into `/dashboard`. */
+export async function signDashboardToken(
+  session: MerchantSession,
+): Promise<string> {
+  return new SignJWT({ ...session, purpose: DASHBOARD_TOKEN_PURPOSE })
+    .setProtectedHeader({ alg: "HS256" })
+    .setIssuedAt()
+    .setExpirationTime("2m")
+    .sign(getSecret());
+}
+
+/** Verify a dashboard hand-off token, returning the merchant or null. */
+export async function verifyDashboardToken(
+  token: string,
+): Promise<MerchantSession | null> {
+  try {
+    const { payload } = await jwtVerify(token, getSecret(), {
+      algorithms: ["HS256"],
+    });
+    if (
+      payload.purpose === DASHBOARD_TOKEN_PURPOSE &&
+      typeof payload.shopId === "string" &&
+      typeof payload.shopDomain === "string"
+    ) {
+      return { shopId: payload.shopId, shopDomain: payload.shopDomain };
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
